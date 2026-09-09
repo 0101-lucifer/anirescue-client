@@ -25,7 +25,7 @@ export default function MapView() {
   useEffect(() => {
     const fetchMapData = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/cases/map`);
+        const response = await fetch('https://anirescue-api.onrender.com/api/cases/map');
         if (response.ok) {
           const data = await response.json();
           setMapCases(data);

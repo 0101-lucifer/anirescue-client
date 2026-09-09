@@ -14,7 +14,7 @@ export function AuthProvider({ children }) {
       if (token) {
         try {
           // Verify the token silently with the backend
-          const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/me`, {
+          const response = await fetch('https://anirescue-api.onrender.com/api/auth/me', {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           

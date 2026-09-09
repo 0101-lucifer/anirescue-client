@@ -61,7 +61,7 @@ export default function useOfflineSync() {
 
     for (const caseData of queue) {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/cases/report`, {
+        const response = await fetch('https://anirescue-api.onrender.com/api/cases/report', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

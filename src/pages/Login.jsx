@@ -23,7 +23,7 @@ export default function Login() {
     const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
     
     try {
-      const response = await fetch(`import.meta.env.VITE_API_URL${endpoint}`, {
+      const response = await fetch('https://anirescue-api.onrender.com/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

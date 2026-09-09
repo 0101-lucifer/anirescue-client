@@ -70,7 +70,7 @@ export default function ReportCase() {
       formData.append('image', selectedImageFile); 
 
       // 4. Transmit payload
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/cases/report`, {
+      const response = await fetch('https://anirescue-api.onrender.com/api/cases/report', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('anirescue_token')}`

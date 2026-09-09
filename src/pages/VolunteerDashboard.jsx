@@ -35,7 +35,7 @@ export default function VolunteerDashboard() {
     
     try {
       const token = localStorage.getItem('anirescue_token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/cases/${caseId}/status`, {
+      const response = await fetch(`https://anirescue-api.onrender.com/api/cases/${caseId}/status`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
