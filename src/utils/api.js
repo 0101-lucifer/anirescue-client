@@ -1,42 +1,46 @@
-import axios from 'axios';
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
-// Create a centralized Axios instance
-const api = axios.create({
-  // During development, it points to your local Node.js server.
-  // In production, it will point to your Render.com backend.
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      manifest: {
+        name: 'AniRescue Emergency Platform',
+        short_name: 'AniRescue',
+        description: 'AI-Powered Animal Rescue & Volunteer Coordination',
+        theme_color: '#059669', // Tailwind emerald-600
+        background_color: '#f8fafc', // Tailwind slate-50
+        display: 'standalone',
+        orientation: 'portrait',
+        icons: [
+          {
+            src: 'pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png'
+          }
+        ]
+      }
+    })
+  ],
+  // --- NEW: MICROSERVICES API GATEWAY PROXY ---
+  server: {
+    proxy: {
+      // Whenever your React app fetches '/api/...', Vite will automatically 
+      // intercept it and forward it to your Nginx Gateway on port 3000
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
+  }
 });
-
-// Request Interceptor: Automatically attach the JWT token if the user is logged in
-api.interceptors.request.use(
-  (config) => {
-    // Check local storage for the token (used by volunteers and NGOs)
-    const token = localStorage.getItem('anirescue_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Response Interceptor: Handle global errors (like expired tokens)
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
-      // If the token is expired/invalid, clear it and redirect to login
-      console.warn('Unauthorized: Token expired or invalid.');
-      localStorage.removeItem('anirescue_token');
-      // window.location.href = '/login'; // Uncomment when login page is built
-    }
-    return Promise.reject(error);
-  }
-);
-
-export default api;

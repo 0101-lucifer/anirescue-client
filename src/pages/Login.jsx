@@ -1,72 +1,141 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
+  const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  
+  const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    // Simulate a network request to your Node.js backend
-    setTimeout(() => {
-      // 1. Save the fake JWT token to localStorage (just like api.js expects!)
-      localStorage.setItem('anirescue_token', 'mock_jwt_volunteer_token_123');
-      
-      // 2. Redirect to the Volunteer Dashboard
-      navigate('/volunteer');
-    }, 1500);
+  const handleInputChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+
+    const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
+    
+    try {
+      const response = await fetch(`http://localhost:3000${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        localStorage.setItem('anirescue_token', data.token);
+        login({ id: data.user.id, email: data.user.email, name: data.user.full_name, role: data.user.role });
+        navigate(data.user.role === 'admin' ? '/ngo' : '/volunteer');
+      } else {
+        setError(data.error || 'Authentication failed');
+      }
+    } catch (err) {
+      setError('Cannot connect to server. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // The precise CSS needed for crisp inset neumorphic inputs in BOTH themes
+  const inputCSS = "w-full px-4 py-3 rounded-xl bg-[#e2e8f0] dark:bg-[#0f172a] text-gray-800 dark:text-gray-100 outline-none transition-all duration-300 shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] focus:ring-2 focus:ring-emerald-500/50";
+
   return (
-    <div className="min-h-[calc(100vh-76px)] flex items-center justify-center bg-slate-50 p-4">
-      <div className="bg-white max-w-md w-full rounded-2xl shadow-xl p-8 border border-gray-100">
-        <div className="text-center mb-8">
-          <div className="text-4xl mb-2">🐾</div>
-          <h2 className="text-2xl font-bold text-gray-900">Welcome Back</h2>
-          <p className="text-sm text-gray-500 mt-1">Sign in to manage rescue operations</p>
+    <div className="flex items-center justify-center min-h-[75vh] px-4 transition-colors duration-300">
+      <div className="w-full max-w-md p-8 md:p-10 rounded-[2rem] bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[10px_10px_20px_#cbd5e1,_-10px_-10px_20px_#f8fafc] dark:shadow-[10px_10px_20px_#070a13,_-10px_-10px_20px_#172441] transition-all duration-300">
+        
+        <div className="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center text-3xl bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441]">
+          {isRegistering ? '🐾' : '👤'}
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-5">
+        <h2 className="text-2xl font-extrabold text-center text-gray-800 dark:text-gray-100 mb-2">
+          {isRegistering ? 'Create Account' : 'System Access'}
+        </h2>
+        <p className="text-sm font-medium text-center text-gray-500 dark:text-gray-400 mb-8">
+          {isRegistering ? 'Join our volunteer response network' : 'Sign in to manage rescue operations'}
+        </p>
+
+        {error && (
+          <div className="p-3 mb-6 text-sm font-bold text-center text-rose-500 bg-rose-100 dark:bg-rose-900/30 rounded-xl">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          
+          {isRegistering && (
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 ml-1 uppercase tracking-wider">Full Name</label>
+              <input 
+                type="text" 
+                name="name" 
+                required 
+                value={formData.name} 
+                onChange={handleInputChange} 
+                className={inputCSS}
+                placeholder="Rahul Sharma"
+              />
+            </div>
+          )}
+
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Email Address</label>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 ml-1 uppercase tracking-wider">Email Address</label>
             <input 
               type="email" 
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
-              placeholder="volunteer@anirescue.org"
+              name="email" 
+              required 
+              value={formData.email} 
+              onChange={handleInputChange} 
+              className={inputCSS}
+              placeholder="name@example.com"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 ml-1 uppercase tracking-wider">Password</label>
             <input 
               type="password" 
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
+              name="password" 
+              required 
+              value={formData.password} 
+              onChange={handleInputChange} 
+              className={inputCSS}
               placeholder="••••••••"
             />
           </div>
 
           <button 
-            type="submit"
+            type="submit" 
             disabled={isLoading}
-            className="w-full bg-emerald-600 text-white p-3.5 rounded-lg font-bold text-md hover:bg-emerald-700 transition-colors shadow-sm disabled:bg-emerald-400 mt-2"
+            className="w-full py-4 mt-2 rounded-xl text-lg font-bold bg-[#1a1f2e] dark:bg-black text-white shadow-[0_4px_10px_rgba(0,0,0,0.3)] hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:hover:translate-y-0"
           >
-            {isLoading ? 'Authenticating...' : 'Sign In'}
+            {isLoading ? 'Processing...' : (isRegistering ? 'Create Account' : 'Sign In')}
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
-          Want to help? <a href="#" className="text-emerald-600 font-bold hover:underline">Apply as a Volunteer</a>
-        </p>
+        <div className="mt-8 text-center">
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+            {isRegistering ? 'Already have an account? ' : "Don't have an account? "}
+            <button 
+              onClick={() => {
+                setIsRegistering(!isRegistering);
+                setError(null);
+              }}
+              className="font-bold text-emerald-600 dark:text-emerald-400 hover:underline transition-all"
+            >
+              {isRegistering ? 'Sign In' : 'Register here'}
+            </button>
+          </p>
+        </div>
+
       </div>
     </div>
   );

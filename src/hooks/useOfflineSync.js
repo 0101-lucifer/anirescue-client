@@ -1,62 +1,99 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export default function useOfflineSync() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [pendingQueue, setPendingQueue] = useState(0);
+  const [pendingCases, setPendingCases] = useState([]);
+
+  // Load any cases stuck in the queue when the app boots up
+  const loadPendingCases = useCallback(() => {
+    const stored = localStorage.getItem('anirescue_offline_queue');
+    if (stored) {
+      setPendingCases(JSON.parse(stored));
+    }
+  }, []);
 
   useEffect(() => {
-    // Check local storage on mount to see if we have old unsynced items
-    const checkQueue = () => {
-      const queue = JSON.parse(localStorage.getItem('anirescue_offline_queue')) || [];
-      setPendingQueue(queue.length);
-    };
-    checkQueue();
-
     const handleOnline = () => {
       setIsOffline(false);
-      syncPendingData();
+      syncCases(); // Try to push to PostgreSQL when internet returns
     };
-    
-    const handleOffline = () => {
-      setIsOffline(true);
-    };
+    const handleOffline = () => setIsOffline(true);
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+
+    loadPendingCases();
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [loadPendingCases]);
 
-  // Save a failed/offline report to localStorage
+  // Saves a case to the browser if the user has no signal
   const saveForOfflineSync = (reportData) => {
-    const currentQueue = JSON.parse(localStorage.getItem('anirescue_offline_queue')) || [];
-    currentQueue.push({ 
-      ...reportData, 
-      timestamp: new Date().toISOString(),
-      offlineId: Date.now() 
-    });
-    // This is where a QuotaExceededError is thrown if the file is too big
-    localStorage.setItem('anirescue_offline_queue', JSON.stringify(currentQueue));
-    setPendingQueue(currentQueue.length);
+    const stored = localStorage.getItem('anirescue_offline_queue');
+    const queue = stored ? JSON.parse(stored) : [];
+    
+    // Add a local ID so we can remove it once successfully synced
+    queue.push({ ...reportData, localId: Date.now() });
+    
+    localStorage.setItem('anirescue_offline_queue', JSON.stringify(queue));
+    setPendingCases(queue);
   };
 
-  // The function that runs automatically when the internet returns
-  const syncPendingData = () => {
-    const queue = JSON.parse(localStorage.getItem('anirescue_offline_queue')) || [];
+  // The Engine: Pushes offline cases to your Node.js API
+  const syncCases = async () => {
+    const stored = localStorage.getItem('anirescue_offline_queue');
+    if (!stored) return;
+
+    const queue = JSON.parse(stored);
     if (queue.length === 0) return;
 
-    console.log(`🌍 Internet restored! Syncing ${queue.length} pending reports to backend...`);
-    
-    // Simulate the upload delay and clear the queue
-    setTimeout(() => {
-      localStorage.removeItem('anirescue_offline_queue');
-      setPendingQueue(0);
-      alert(`✅ Connection restored! Successfully synced ${queue.length} offline rescue reports.`);
-    }, 2500);
+    // We MUST have a token to sync to the secure backend
+    const token = localStorage.getItem('anirescue_token');
+    if (!token) {
+      console.warn("⚠️ Cannot sync cases: User is not logged in.");
+      return; 
+    }
+
+    let remainingQueue = [...queue];
+
+    for (const caseData of queue) {
+      try {
+        const response = await fetch('http://localhost:3000/api/cases/report', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}` // Secure identity transmission
+          },
+          body: JSON.stringify(caseData)
+        });
+
+        if (response.ok) {
+          // Successfully saved to Neon DB! Remove it from the local browser queue
+          remainingQueue = remainingQueue.filter(c => c.localId !== caseData.localId);
+        } else if (response.status === 401 || response.status === 403) {
+          // If the token expired, stop syncing to prevent spamming errors
+          console.error("Authentication failed during sync.");
+          break;
+        }
+      } catch (error) {
+        console.error("Network error during sync", error);
+        break; // Stop syncing if the Node server is unreachable
+      }
+    }
+
+    // Update the browser storage with whatever cases are left
+    localStorage.setItem('anirescue_offline_queue', JSON.stringify(remainingQueue));
+    setPendingCases(remainingQueue);
   };
 
-  return { isOffline, pendingQueue, saveForOfflineSync };
+  // Failsafe to wipe the queue manually if needed
+  const clearQueue = () => {
+    localStorage.removeItem('anirescue_offline_queue');
+    setPendingCases([]);
+  };
+
+  return { isOffline, pendingCases, saveForOfflineSync, syncCases, clearQueue };
 }

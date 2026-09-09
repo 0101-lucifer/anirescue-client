@@ -1,80 +1,87 @@
-import { useState } from 'react';
-
-// Mock data for the NGO view
-const initialCases = [
-  { id: 'CASE-001', animal: 'Dog', issue: 'Hit by bike', location: 'Andheri West', status: 'Unassigned', priority: 'High', date: 'Just now' },
-  { id: 'CASE-002', animal: 'Cat', issue: 'Stuck in tree', location: 'Bandra', status: 'In Progress (Vol: Rahul)', priority: 'Medium', date: '20 mins ago' },
-  { id: 'CASE-003', animal: 'Cow', issue: 'Sick/Lethargic', location: 'Dadar', status: 'Resolved', priority: 'High', date: '2 hrs ago' },
-];
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
 export default function NGODashboard() {
-  const [cases] = useState(initialCases);
+  const [recentCases, setRecentCases] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchCases = async () => {
+      try {
+        const token = localStorage.getItem('anirescue_token');
+        const response = await fetch('http://localhost:3000/api/cases', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setRecentCases(data);
+        }
+      } catch (error) {
+        console.error("Failed to load cases", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchCases();
+  }, []);
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto min-h-[calc(100vh-76px)]">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b pb-4">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto mb-20 md:mb-0 transition-colors duration-300">
+      
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">NGO Command Center</h1>
-          <p className="text-gray-500 mt-1">Centralized case and volunteer management</p>
-        </div>
-        <div className="flex gap-4">
-          <div className="bg-red-50 text-red-700 px-4 py-2 rounded-lg border border-red-100">
-            <span className="text-xl font-bold">{cases.filter(c => c.status === 'Unassigned').length}</span> Unassigned
-          </div>
-          <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg border border-blue-100">
-            <span className="text-xl font-bold">{cases.filter(c => c.status.includes('In Progress')).length}</span> Active
-          </div>
+          <h2 className="text-2xl font-extrabold text-gray-800 dark:text-gray-100 transition-colors">NGO Command Center</h2>
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1">Live Database Connection</p>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-          <h2 className="text-lg font-bold text-gray-800">Recent Rescue Cases</h2>
-          <button className="text-sm text-emerald-600 font-semibold hover:underline">View Map Mode</button>
-        </div>
+      <div className="rounded-[2rem] p-6 md:p-8 transition-colors duration-300 bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[10px_10px_20px_#cbd5e1,_-10px_-10px_20px_#f8fafc] dark:shadow-[10px_10px_20px_#070a13,_-10px_-10px_20px_#172441]">
         
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 text-gray-500 text-sm border-b">
-                <th className="p-4 font-semibold">Case ID</th>
-                <th className="p-4 font-semibold">Animal & Issue</th>
-                <th className="p-4 font-semibold">Location</th>
-                <th className="p-4 font-semibold">Priority</th>
-                <th className="p-4 font-semibold">Status</th>
-                <th className="p-4 font-semibold">Action</th>
-              </tr>
-            </thead>
-            <tbody className="text-sm">
-              {cases.map((c, index) => (
-                <tr key={index} className="border-b hover:bg-gray-50 transition-colors">
-                  <td className="p-4 font-medium text-gray-900">{c.id}</td>
-                  <td className="p-4">
-                    <div className="font-bold text-gray-800">{c.animal}</div>
-                    <div className="text-gray-500 text-xs">{c.issue}</div>
-                  </td>
-                  <td className="p-4 text-gray-600">{c.location}</td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded text-xs font-bold ${c.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-800'}`}>
-                      {c.priority}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold 
-                      ${c.status === 'Unassigned' ? 'bg-gray-100 text-gray-600' : 
-                        c.status === 'Resolved' ? 'bg-emerald-100 text-emerald-700' : 
-                        'bg-blue-100 text-blue-700'}`}
-                    >
-                      {c.status}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <button className="text-emerald-600 font-bold hover:text-emerald-800">Manage</button>
-                  </td>
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="font-extrabold text-gray-800 dark:text-gray-100 text-lg">Active Rescue Queue</h3>
+          <Link to="/map" className="text-emerald-600 dark:text-emerald-400 text-sm font-bold hover:underline drop-shadow-sm">View Map Mode</Link>
+        </div>
+
+        <div className="rounded-2xl overflow-x-auto transition-colors duration-300 bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] p-2">
+          
+          {isLoading ? (
+            <div className="p-8 text-center text-gray-500 font-bold">📡 Syncing with Neon Database...</div>
+          ) : recentCases.length === 0 ? (
+            <div className="p-8 text-center text-gray-500 font-bold">No active cases in the database.</div>
+          ) : (
+            <table className="w-full text-left border-collapse min-w-[800px]">
+              <thead>
+                <tr className="border-b border-gray-300/50 dark:border-white/5">
+                  <th className="p-4 text-xs uppercase font-bold text-gray-500 dark:text-gray-400">Case ID</th>
+                  <th className="p-4 text-xs uppercase font-bold text-gray-500 dark:text-gray-400">Animal & Issue</th>
+                  <th className="p-4 text-xs uppercase font-bold text-gray-500 dark:text-gray-400">Location Details</th>
+                  <th className="p-4 text-xs uppercase font-bold text-gray-500 dark:text-gray-400">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {recentCases.map((caseItem) => (
+                  <tr key={caseItem.id} className="border-b border-gray-300/30 dark:border-white/5 last:border-0 hover:bg-white/5 dark:hover:bg-black/10 transition-colors">
+                    <td className="p-4 font-bold text-gray-800 dark:text-gray-200 text-sm">CASE-{caseItem.id}</td>
+                    <td className="p-4">
+                      <div className="font-bold text-gray-800 dark:text-gray-200 text-sm">{caseItem.species || 'Unknown'}</div>
+                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 truncate max-w-[200px]">{caseItem.issue_description || 'No description provided'}</div>
+                    </td>
+                    <td className="p-4 font-medium text-gray-600 dark:text-gray-300 text-sm">
+                      {caseItem.manual_address ? caseItem.manual_address : 'GPS Coordinates Provided'}
+                    </td>
+                    <td className="p-4">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold shadow-[inset_2px_2px_4px_rgba(0,0,0,0.1)] bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                        {caseItem.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

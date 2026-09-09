@@ -1,63 +1,180 @@
-import { useState } from 'react';
-
-// Mock data representing emergencies pushed via Firebase FCM
-const nearbyEmergencies = [
-  { id: 101, animal: 'Indie Dog', distance: '1.2 km away', time: '2 mins ago', urgency: 'High', img: '🐕', status: 'Pending' },
-  { id: 102, animal: 'Cat', distance: '3.5 km away', time: '15 mins ago', urgency: 'Medium', img: '🐈', status: 'Pending' },
-];
+import { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext'; // NEW: Import your auth context!
 
 export default function VolunteerDashboard() {
-  const [cases, setCases] = useState(nearbyEmergencies);
+  const [activeTab, setActiveTab] = useState('pending');
+  const [isAvailable, setIsAvailable] = useState(true);
+  const [cases, setCases] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [processingId, setProcessingId] = useState(null); 
+  
+  const { user } = useAuth(); // NEW: Get the currently logged in user
 
-  const handleAcceptCase = (caseId) => {
-    // Update the specific case to show it's been accepted by the volunteer
-    setCases(cases.map(c => c.id === caseId ? { ...c, status: 'Accepted' } : c));
+  useEffect(() => {
+    const fetchCases = async () => {
+      try {
+        const token = localStorage.getItem('anirescue_token');
+        const response = await fetch('http://localhost:3000/api/cases', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setCases(data);
+        }
+      } catch (error) {
+        console.error("Failed to load volunteer cases", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchCases();
+  }, []);
+
+  const handleUpdateStatus = async (caseId, newStatus) => {
+    setProcessingId(caseId); 
+    
+    try {
+      const token = localStorage.getItem('anirescue_token');
+      const response = await fetch(`http://localhost:3000/api/cases/${caseId}/status`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      if (response.ok) {
+        // We include the assigned_volunteer_id instantly so UI re-renders correctly
+        setCases(cases.map(c => c.id === caseId ? { ...c, status: newStatus, assigned_volunteer_id: user.id } : c));
+        
+        if (newStatus === 'Active') setActiveTab('active');
+        if (newStatus === 'Resolved') setActiveTab('resolved');
+      } else {
+        const errorData = await response.json();
+        alert(errorData.error || "Failed to update status.");
+      }
+    } catch (error) {
+      console.error("Error updating case:", error);
+    } finally {
+      setProcessingId(null); 
+    }
   };
 
+  const displayedCases = cases.filter(c => {
+    if (activeTab === 'pending') return c.status === 'Unassigned' || c.status === 'Pending';
+    if (activeTab === 'active') return c.status === 'Active';
+    return c.status === 'Resolved';
+  });
+
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto min-h-[calc(100vh-76px)]">
-      <div className="flex justify-between items-center mb-6 border-b pb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Volunteer Hub</h1>
-          <p className="text-emerald-600 font-semibold text-sm">🟢 Active & On-Duty</p>
-        </div>
-        <div className="bg-emerald-100 text-emerald-800 p-3 rounded-full shadow-sm">
-          🔔 <span className="font-bold">{cases.filter(c => c.status === 'Pending').length}</span> New Alerts
-        </div>
+    <div className="p-4 md:p-8 max-w-4xl mx-auto mb-20 md:mb-0 transition-colors duration-300">
+      
+      <div className="text-center mb-10">
+        <h2 className="text-3xl font-extrabold text-gray-800 dark:text-gray-100 mb-2 transition-colors">Volunteer Dispatch</h2>
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Manage your active rescue operations.</p>
       </div>
 
-      <h2 className="text-lg font-bold text-gray-700 mb-4">🚨 Emergencies Near You</h2>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {cases.map((emergency) => (
-          <div key={emergency.id} className={`bg-white rounded-xl shadow-md border-l-4 p-5 transition-all ${emergency.status === 'Accepted' ? 'border-gray-400 opacity-75' : 'border-red-500'}`}>
-            <div className="flex justify-between items-start mb-3">
-              <div className="flex gap-3 items-center">
-                <div className="text-4xl bg-gray-50 p-2 rounded-lg">{emergency.img}</div>
-                <div>
-                  <h3 className="font-bold text-lg text-gray-900">{emergency.animal}</h3>
-                  <p className="text-xs text-gray-500">⏱️ {emergency.time} • 📍 {emergency.distance}</p>
-                </div>
-              </div>
-              {emergency.urgency === 'High' && emergency.status === 'Pending' && (
-                <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded">Urgent</span>
-              )}
-            </div>
+      <div className="rounded-[2rem] p-6 md:p-8 transition-colors duration-300 bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[10px_10px_20px_#cbd5e1,_-10px_-10px_20px_#f8fafc] dark:shadow-[10px_10px_20px_#070a13,_-10px_-10px_20px_#172441]">
+        
+        <div className="flex p-1.5 rounded-xl mb-8 transition-colors duration-300 bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441]">
+          {['pending', 'active', 'resolved'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-3 rounded-lg text-xs md:text-sm font-bold capitalize transition-all duration-300 ${
+                activeTab === tab 
+                  ? 'bg-[#1a1f2e] dark:bg-black text-white shadow-[0_4px_10px_rgba(0,0,0,0.3)]' 
+                  : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
 
-            {emergency.status === 'Pending' ? (
-              <button 
-                onClick={() => handleAcceptCase(emergency.id)}
-                className="w-full mt-2 bg-emerald-600 text-white py-2.5 rounded-lg font-bold hover:bg-emerald-700 transition-colors shadow-sm"
-              >
-                Accept Rescue Case
-              </button>
-            ) : (
-              <div className="w-full mt-2 bg-gray-100 text-gray-600 py-2.5 rounded-lg font-bold text-center border border-gray-200">
-                ✅ Case Accepted (In Progress)
+        <div className="flex items-center justify-between p-4 rounded-xl mb-8 transition-colors duration-300 bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441]">
+          <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Available for Dispatch</span>
+          <button 
+            onClick={() => setIsAvailable(!isAvailable)}
+            className={`w-14 h-7 rounded-full p-1 transition-colors duration-300 ${isAvailable ? 'bg-blue-500' : 'bg-gray-400 dark:bg-gray-600'}`}
+          >
+            <div className={`w-5 h-5 rounded-full bg-white transition-transform duration-300 ${isAvailable ? 'translate-x-7' : 'translate-x-0'}`}></div>
+          </button>
+        </div>
+
+        <div>
+          <h3 className="text-xs uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 mb-4 ml-2">Alert Queue</h3>
+          
+          <div className="space-y-4">
+            {isLoading ? (
+              <div className="p-8 text-center text-sm font-bold text-gray-500 dark:text-gray-400 rounded-2xl bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc]">
+                Syncing Network...
               </div>
+            ) : displayedCases.length === 0 ? (
+              <div className="p-8 text-center text-sm font-bold text-gray-500 dark:text-gray-400 rounded-2xl bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441]">
+                No {activeTab} cases currently in the database.
+              </div>
+            ) : (
+              displayedCases.map((caseItem) => (
+                <div key={caseItem.id} className="p-5 rounded-2xl transition-all duration-300 bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[6px_6px_12px_#cbd5e1,_-6px_-6px_12px_#f8fafc] dark:shadow-[6px_6px_12px_#070a13,_-6px_-6px_12px_#172441]">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h4 className="font-bold text-gray-800 dark:text-gray-100 text-lg">{caseItem.species || 'Unknown'}</h4>
+                      <p className="text-xs font-bold text-gray-500 dark:text-gray-400">CASE-{caseItem.id} • {caseItem.priority} Priority</p>
+                    </div>
+                    <span className="w-8 h-8 rounded-full flex items-center justify-center bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_2px_2px_4px_#cbd5e1,inset_-2px_-2px_4px_#f8fafc] dark:shadow-[inset_2px_2px_4px_#070a13,inset_-2px_-2px_4px_#172441]">
+                      {caseItem.priority === 'High' ? '🚨' : '⚠️'}
+                    </span>
+                  </div>
+                  
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-4 bg-black/5 dark:bg-white/5 p-3 rounded-xl border border-gray-300/50 dark:border-white/5">
+                    {caseItem.issue_description}
+                  </p>
+                  
+                  <div className="flex gap-3">
+                    
+                    {activeTab === 'pending' && (
+                      <button 
+                        onClick={() => handleUpdateStatus(caseItem.id, 'Active')}
+                        disabled={processingId === caseItem.id}
+                        className="flex-1 py-3 rounded-xl text-sm font-bold bg-[#1a1f2e] dark:bg-black text-white shadow-[0_4px_10px_rgba(0,0,0,0.3)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0"
+                      >
+                        {processingId === caseItem.id ? 'Processing...' : 'Accept Case'}
+                      </button>
+                    )}
+
+                    {/* NEW: Explicitly checking ownership before rendering the Resolved button */}
+                    {activeTab === 'active' && (
+                      caseItem.assigned_volunteer_id === user?.id ? (
+                        <button 
+                          onClick={() => handleUpdateStatus(caseItem.id, 'Resolved')}
+                          disabled={processingId === caseItem.id}
+                          className="flex-1 py-3 rounded-xl text-sm font-bold bg-emerald-500 text-white shadow-[0_4px_10px_rgba(16,185,129,0.3)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0"
+                        >
+                          {processingId === caseItem.id ? 'Processing...' : 'Mark as Resolved'}
+                        </button>
+                      ) : (
+                        <div className="flex-1 py-3 rounded-xl text-sm font-bold text-center bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] text-gray-400 dark:text-gray-500">
+                          🔒 Claimed by another volunteer
+                        </div>
+                      )
+                    )}
+
+                    {activeTab === 'resolved' && (
+                      <div className="flex-1 py-3 rounded-xl text-sm font-bold text-center bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] text-gray-400 dark:text-gray-500">
+                        Rescue Completed ✅
+                      </div>
+                    )}
+
+                  </div>
+                  
+                </div>
+              ))
             )}
           </div>
-        ))}
+        </div>
+
       </div>
     </div>
   );

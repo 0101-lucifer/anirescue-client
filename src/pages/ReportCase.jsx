@@ -1,241 +1,213 @@
-import { useState } from 'react';
-import useLocation from '../hooks/useLocation';
-import useOfflineSync from '../hooks/useOfflineSync';
+import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export default function ReportCase() {
-  const [description, setDescription] = useState('');
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [aiResult, setAiResult] = useState(null);
+  // State Management
+  const [location, setLocation] = useState({ lat: null, lng: null, isManual: false });
+  const [manualAddress, setManualAddress] = useState('');
+  const [issueDescription, setIssueDescription] = useState('');
   
-  const { location, error, isLoading, getLocation } = useLocation();
-  const { isOffline, pendingQueue, saveForOfflineSync } = useOfflineSync();
+  // File states (No more Base64!)
+  const [selectedImageFile, setSelectedImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  
+  const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+
+  const handleLocationLock = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            isManual: false
+          });
+          setError('');
+        },
+        () => {
+          setError('Unable to retrieve your location automatically.');
+        }
+      );
+    }
+  };
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
+      setSelectedImageFile(file);
+      // Create a fast, local preview URL without converting to Base64
+      setImagePreview(URL.createObjectURL(file)); 
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!imageFile || !location) {
-      alert("⚠️ Please provide both a photo and your location to proceed.");
-      return;
-    }
+    if (!selectedImageFile) return setError('Please select an image of the emergency.');
+    if (!location.lat && !manualAddress) return setError('Please provide a location.');
 
     setIsSubmitting(true);
+    setError('');
 
-    // --- OFFLINE LOGIC ---
-    if (isOffline) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        try {
-          // Attempt to save to localStorage
-          saveForOfflineSync({
-            location,
-            description,
-            imageBase64: reader.result 
-          });
-          
-          setIsSubmitting(false);
-          alert("📴 You are offline. Your report has been saved securely and will automatically send when you reconnect!");
-          
-          // Reset form on success
-          setImagePreview(null); 
-          setImageFile(null); 
-          setDescription('');
-          
-        } catch (error) {
-          console.error("Offline save error:", error);
-          setIsSubmitting(false); // Un-stick the button!
-          
-          // Check if the error is the 5MB storage limit
-          if (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-            alert("⚠️ This high-res image is too large to save offline. Please take a lower resolution photo or wait for internet access.");
-          } else {
-            alert("⚠️ Failed to save report offline. Please try again.");
-          }
-        }
-      };
-      reader.readAsDataURL(imageFile);
-      return; // Stop here, do not run the AI simulation if offline
-    }
+    try {
+      // 1. Create the Multipart Form payload
+      const formData = new FormData();
+      
+      // 2. Append text fields
+      formData.append('location', JSON.stringify({
+        lat: location.lat,
+        lng: location.lng,
+        address: manualAddress,
+        isManual: location.isManual
+      }));
+      formData.append('description', issueDescription);
+      
+      // 3. Append the raw binary file directly
+      formData.append('image', selectedImageFile); 
 
-    // --- ONLINE LOGIC (Simulated Gemini AI) ---
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setAiResult({
-        species: "Indie Dog (Canis familiaris)",
-        injury: "Laceration on right hind leg, moderate bleeding. Possible trauma.",
-        urgency: "High Priority",
-        firstAid: [
-          "Do not attempt to move the dog abruptly.",
-          "If safe, apply gentle pressure to the wound with a clean cloth.",
-          "Keep bystanders away to reduce the animal's stress.",
-          "Wait for the volunteer; do not offer food or water right now."
-        ]
+      // 4. Transmit payload
+      const response = await fetch('http://localhost:3000/api/cases/report', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('anirescue_token')}`
+          // Let the browser set the 'Content-Type' automatically for FormData!
+        },
+        body: formData
       });
-    }, 3000);
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert('Rescue case submitted successfully!');
+        navigate('/map');
+      } else {
+        setError(data.error || 'Submission failed');
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Failed to connect to server. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
+  // Shared CSS for inputs
+  const inputCSS = "w-full px-4 py-3 rounded-xl bg-[#e2e8f0] dark:bg-[#0f172a] text-gray-800 dark:text-gray-100 outline-none transition-all duration-300 shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] focus:ring-2 focus:ring-rose-500/50";
+
   return (
-    <div className="p-4 md:p-8 max-w-lg mx-auto">
-      
-      {/* If we have an AI Result, show the success screen instead of the form */}
-      {aiResult ? (
-        <div className="bg-white rounded-xl shadow-lg p-6 border-t-4 border-emerald-500 animate-fade-in">
-          <div className="text-center mb-6">
-            <div className="text-5xl mb-2">✅</div>
-            <h2 className="text-2xl font-bold text-gray-800">Alert Broadcasted!</h2>
-            <p className="text-sm text-gray-600">5 nearest volunteers have been notified.</p>
+    <div className="flex items-center justify-center min-h-[75vh] px-4 transition-colors duration-300">
+      <div className="w-full max-w-md p-8 rounded-[2rem] bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[10px_10px_20px_#cbd5e1,_-10px_-10px_20px_#f8fafc] dark:shadow-[10px_10px_20px_#070a13,_-10px_-10px_20px_#172441] transition-all duration-300">
+        
+        <h2 className="text-2xl font-extrabold text-center text-gray-800 dark:text-gray-100 mb-6">
+          🚨 Emergency Report
+        </h2>
+
+        {error && (
+          <div className="p-3 mb-6 text-sm font-bold text-center text-rose-500 bg-rose-100 dark:bg-rose-900/30 rounded-xl">
+            {error}
           </div>
+        )}
 
-          <div className="bg-slate-50 p-4 rounded-lg border border-gray-200 mb-6">
-            <h3 className="font-bold text-emerald-700 mb-3 flex items-center gap-2">
-              🤖 Gemini AI Analysis
-            </h3>
-            <p className="text-sm text-gray-700 mb-1"><strong>Species:</strong> {aiResult.species}</p>
-            <p className="text-sm text-gray-700 mb-1"><strong>Status:</strong> {aiResult.injury}</p>
-            <p className="text-sm text-gray-700"><strong>Urgency:</strong> <span className="text-red-600 font-bold">{aiResult.urgency}</span></p>
-          </div>
-
-          <div className="mb-6">
-            <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-              ⚕️ Immediate First Aid
-            </h3>
-            <ul className="space-y-2">
-              {aiResult.firstAid.map((step, index) => (
-                <li key={index} className="flex gap-2 text-sm text-gray-700">
-                  <span className="text-emerald-500 font-bold">{index + 1}.</span> {step}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <button 
-            onClick={() => { setAiResult(null); setImagePreview(null); setImageFile(null); setDescription(''); }}
-            className="w-full bg-gray-200 text-gray-800 p-4 rounded-lg font-bold hover:bg-gray-300 transition-colors"
-          >
-            Report Another Case
-          </button>
-        </div>
-      ) : (
-        /* Otherwise, show our standard reporting form */
-        <div className="bg-white rounded-xl shadow-lg p-6 border-t-4 border-red-500">
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">🚨 Emergency Report</h2>
-          <p className="text-gray-600 mb-6 text-sm">
-            Please provide a photo and location. Our AI will analyze the situation instantly.
-          </p>
-
-          {/* Offline Warning Banner */}
-          {isOffline && (
-            <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 mb-6 rounded-r-lg">
-              <p className="text-sm text-yellow-800 font-bold flex items-center gap-2">
-                <span>📴</span> You are currently offline.
-              </p>
-              <p className="text-xs text-yellow-700 mt-1">
-                Reports submitted now will be saved to your device and synced automatically when your connection is restored.
-              </p>
-            </div>
-          )}
+        <form onSubmit={handleSubmit} className="space-y-6">
           
-          {/* Pending Sync Indicator */}
-          {pendingQueue > 0 && !isOffline && (
-            <p className="text-xs text-emerald-600 font-bold mb-4">
-              ⏳ Syncing {pendingQueue} offline report(s) in the background...
-            </p>
-          )}
-
-          <form className="space-y-5" onSubmit={handleSubmit}>
-            
-            {/* Photo Upload Section */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Animal Photo (Required)
-              </label>
+          {/* Image Upload Area */}
+          <div>
+            <div 
+              onClick={() => fileInputRef.current.click()}
+              className="w-full h-48 rounded-[1.5rem] flex flex-col items-center justify-center cursor-pointer overflow-hidden transition-all duration-300 bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] hover:opacity-90 active:scale-95"
+            >
+              {imagePreview ? (
+                <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+              ) : (
+                <div className="text-center text-gray-500 dark:text-gray-400 font-bold">
+                  <span className="text-4xl block mb-2">📸</span>
+                  Tap to capture or upload
+                </div>
+              )}
               <input 
                 type="file" 
-                id="cameraInput" 
                 accept="image/*" 
-                capture="environment" 
                 className="hidden" 
-                onChange={handleImageChange}
+                ref={fileInputRef} 
+                onChange={handleImageChange} 
               />
-              <label 
-                htmlFor="cameraInput"
-                className="block border-2 border-dashed border-gray-300 rounded-lg overflow-hidden text-center hover:bg-gray-50 transition-colors cursor-pointer relative"
+            </div>
+          </div>
+
+          {/* Location Controls */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 ml-1 uppercase tracking-wider">
+              Location Lock
+            </label>
+            <div className="flex gap-4">
+              <button 
+                type="button" 
+                onClick={handleLocationLock} 
+                className="flex-1 py-3 rounded-xl text-sm font-bold bg-[#1a1f2e] dark:bg-black text-white shadow-[0_4px_10px_rgba(0,0,0,0.3)] hover:-translate-y-0.5 active:scale-95 transition-all duration-200"
               >
-                {imagePreview ? (
-                  <img src={imagePreview} alt="Animal Preview" className="w-full h-48 object-cover" />
-                ) : (
-                  <div className="p-8">
-                    <div className="text-4xl mb-2">📸</div>
-                    <p className="text-sm text-gray-500 font-medium">Tap to take photo or upload</p>
-                  </div>
-                )}
-              </label>
+                AUTO GPS
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setLocation({ ...location, isManual: true })} 
+                className="flex-1 py-3 rounded-xl text-sm font-bold bg-[#e2e8f0] dark:bg-[#0f172a] text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 shadow-[6px_6px_12px_#cbd5e1,_-6px_-6px_12px_#f8fafc] dark:shadow-[6px_6px_12px_#070a13,_-6px_-6px_12px_#172441] hover:-translate-y-0.5 active:scale-95 active:shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:active:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] transition-all duration-200"
+              >
+                PIN & DESCRIBE
+              </button>
             </div>
 
-            {/* Location Section */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Current Location (Required)
-              </label>
-              <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  readOnly 
-                  value={location ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : ''}
-                  placeholder="GPS Coordinates..." 
-                  className="w-full p-3 bg-gray-100 border border-gray-300 rounded-lg text-sm focus:outline-none"
-                />
-                <button 
-                  type="button"
-                  onClick={getLocation}
-                  disabled={isLoading}
-                  className="bg-emerald-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-emerald-700 transition-colors flex items-center justify-center disabled:opacity-70 min-w-[110px]"
-                >
-                  {isLoading ? '⏳ ...' : '📍 Get GPS'}
-                </button>
+            {location.isManual && (
+              <input 
+                type="text" 
+                placeholder="E.g., Near City Mall, Main Gate" 
+                value={manualAddress} 
+                onChange={(e) => setManualAddress(e.target.value)} 
+                className={`mt-4 ${inputCSS}`}
+              />
+            )}
+
+            {!location.isManual && location.lat && (
+              <div className="mt-4 px-4 py-3 rounded-xl bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] text-sm font-bold text-emerald-600 dark:text-emerald-400 text-center">
+                {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
               </div>
-            </div>
+            )}
+          </div>
 
-            {/* Notes Section */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Additional Notes (Optional)
-              </label>
-              <textarea 
-                rows="3"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="E.g., Dog is breathing heavily..."
-                className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              ></textarea>
-            </div>
+          {/* Description */}
+          <div>
+            <textarea 
+              placeholder="Describe the animal, injury, and severity..." 
+              value={issueDescription} 
+              onChange={(e) => setIssueDescription(e.target.value)} 
+              className={`${inputCSS} h-24 resize-none`}
+            ></textarea>
+          </div>
 
-            {/* Submit Button */}
-            <button 
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-red-600 text-white p-4 rounded-lg font-bold text-lg hover:bg-red-700 transition-colors shadow-md mt-4 disabled:bg-red-400 flex justify-center items-center gap-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <span className="animate-spin text-xl">⏳</span> Processing...
-                </>
-              ) : (
-                'Send Rescue Alert'
-              )}
-            </button>
-          </form>
-        </div>
-      )}
+          {/* Submit Button */}
+          <button 
+            type="submit" 
+            disabled={isSubmitting}
+            className="w-full relative group block select-none focus:outline-none"
+          >
+            {/* Red LED Glow Base */}
+            <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-3/4 h-5 bg-rose-500 blur-lg rounded-full opacity-60 transition-all duration-300 ${isSubmitting ? 'opacity-0' : 'group-hover:bg-rose-400 group-hover:h-6 group-hover:opacity-100 group-active:h-2 group-active:blur-md group-active:bg-rose-700 group-active:opacity-50'}`}></div>
+            
+            {/* Physical Button Level */}
+            <div className={`relative z-10 w-full bg-[#1a1f2e] dark:bg-black text-white px-6 py-4 rounded-xl font-bold text-lg transition-all duration-200 border-t border-white/20 shadow-[0_8px_20px_rgba(0,0,0,0.4)] flex justify-center items-center gap-2 ${
+              isSubmitting 
+                ? 'opacity-50 cursor-not-allowed shadow-[inset_0_5px_15px_rgba(0,0,0,0.9)] scale-[0.97]' 
+                : 'group-hover:-translate-y-1 group-hover:shadow-[0_15px_30px_rgba(0,0,0,0.6)] group-active:translate-y-1 group-active:scale-[0.97] group-active:shadow-[inset_0_5px_15px_rgba(0,0,0,0.9)]'
+            }`}>
+              {isSubmitting ? 'Processing...' : 'Transmit Rescue Alert'}
+            </div>
+          </button>
+          
+        </form>
+      </div>
     </div>
   );
 }
