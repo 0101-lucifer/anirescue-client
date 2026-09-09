@@ -9,7 +9,7 @@ export default function NGODashboard() {
     const fetchCases = async () => {
       try {
         const token = localStorage.getItem('anirescue_token');
-        const response = await fetch('http://localhost:3000/api/cases', {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/cases`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         

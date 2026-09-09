@@ -37,7 +37,7 @@ export default defineConfig({
       // Whenever your React app fetches '/api/...', Vite will automatically 
       // intercept it and forward it to your Nginx Gateway on port 3000
       '/api': {
-        target: 'http://localhost:3000',
+        target: `${import.meta.env.VITE_API_URL}`,
         changeOrigin: true,
         secure: false,
       }

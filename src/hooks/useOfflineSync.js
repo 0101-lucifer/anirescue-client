@@ -61,7 +61,7 @@ export default function useOfflineSync() {
 
     for (const caseData of queue) {
       try {
-        const response = await fetch('http://localhost:3000/api/cases/report', {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/cases/report`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

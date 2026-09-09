@@ -14,7 +14,7 @@ export default function VolunteerDashboard() {
     const fetchCases = async () => {
       try {
         const token = localStorage.getItem('anirescue_token');
-        const response = await fetch('http://localhost:3000/api/cases', {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/cases`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -35,7 +35,7 @@ export default function VolunteerDashboard() {
     
     try {
       const token = localStorage.getItem('anirescue_token');
-      const response = await fetch(`http://localhost:3000/api/cases/${caseId}/status`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/cases/${caseId}/status`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
