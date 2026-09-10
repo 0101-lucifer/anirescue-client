@@ -1,142 +1,154 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 
-export default function Login() {
+const Login = () => {
+  // Toggles between Login (false) and Register (true) modes
   const [isRegistering, setIsRegistering] = useState(false);
-  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
-  const [error, setError] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
   
-  const { login } = useAuth();
+  // Form State
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  
   const navigate = useNavigate();
-
-  const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
-    setIsLoading(true);
+    setError('');
+    setLoading(true);
 
+    // 1. Smart Routing: Pick the exact endpoint based on the form mode
     const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
     
+    // 2. Smart Payload: Only send the 'name' field if they are creating an account
+    const payload = isRegistering 
+      ? { name, email, password } 
+      : { email, password };
+
     try {
-      const response = await fetch('`https://anirescue-api.onrender.com${endpoint}`, {
+      const response = await fetch(`https://anirescue-api.onrender.com${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
 
-      if (response.ok) {
-        localStorage.setItem('anirescue_token', data.token);
-        login({ id: data.user.id, email: data.user.email, name: data.user.full_name, role: data.user.role });
-        navigate(data.user.role === 'admin' ? '/ngo' : '/volunteer');
-      } else {
-        setError(data.error || 'Authentication failed');
+      if (!response.ok) {
+        throw new Error(data.error || 'Server error. Please try again.');
       }
+
+      // Success! Save the JWT token and redirect to the dashboard
+      localStorage.setItem('token', data.token);
+      
+      // If you are storing user data in context, you'd set it here too
+      // login(data.user); 
+      
+      navigate('/'); 
+      
     } catch (err) {
-      setError('Cannot connect to server. Please try again.');
+      setError(err.message);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  // The precise CSS needed for crisp inset neumorphic inputs in BOTH themes
-  const inputCSS = "w-full px-4 py-3 rounded-xl bg-[#e2e8f0] dark:bg-[#0f172a] text-gray-800 dark:text-gray-100 outline-none transition-all duration-300 shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] focus:ring-2 focus:ring-emerald-500/50";
-
   return (
-    <div className="flex items-center justify-center min-h-[75vh] px-4 transition-colors duration-300">
-      <div className="w-full max-w-md p-8 md:p-10 rounded-[2rem] bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[10px_10px_20px_#cbd5e1,_-10px_-10px_20px_#f8fafc] dark:shadow-[10px_10px_20px_#070a13,_-10px_-10px_20px_#172441] transition-all duration-300">
-        
-        <div className="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center text-3xl bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441]">
-          {isRegistering ? '🐾' : '👤'}
+    <div className="min-h-screen flex items-center justify-center bg-[#0b1120]">
+      <div className="bg-[#111827] p-8 rounded-xl shadow-2xl w-full max-w-md text-white border border-gray-800">
+        <div className="text-center mb-8">
+          <div className="flex justify-center mb-4">
+            <span className="text-3xl">🐾</span>
+          </div>
+          <h2 className="text-2xl font-bold">
+            {isRegistering ? 'Create Account' : 'System Access'}
+          </h2>
+          <p className="text-gray-400 text-sm mt-2">
+            {isRegistering ? 'Join our volunteer response network' : 'Sign in to manage rescue operations'}
+          </p>
         </div>
 
-        <h2 className="text-2xl font-extrabold text-center text-gray-800 dark:text-gray-100 mb-2">
-          {isRegistering ? 'Create Account' : 'System Access'}
-        </h2>
-        <p className="text-sm font-medium text-center text-gray-500 dark:text-gray-400 mb-8">
-          {isRegistering ? 'Join our volunteer response network' : 'Sign in to manage rescue operations'}
-        </p>
-
         {error && (
-          <div className="p-3 mb-6 text-sm font-bold text-center text-rose-500 bg-rose-100 dark:bg-rose-900/30 rounded-xl">
+          <div className="bg-red-900/50 border border-red-500 text-red-200 p-3 rounded mb-6 text-sm text-center">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Only show the Name field if registering */}
           {isRegistering && (
             <div>
-              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 ml-1 uppercase tracking-wider">Full Name</label>
-              <input 
-                type="text" 
-                name="name" 
-                required 
-                value={formData.name} 
-                onChange={handleInputChange} 
-                className={inputCSS}
-                placeholder="Rahul Sharma"
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Full Name
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-[#0b1120] border border-gray-700 rounded p-3 text-white focus:border-cyan-400 focus:outline-none transition-colors"
+                placeholder="Full Name"
+                required={isRegistering}
               />
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 ml-1 uppercase tracking-wider">Email Address</label>
-            <input 
-              type="email" 
-              name="email" 
-              required 
-              value={formData.email} 
-              onChange={handleInputChange} 
-              className={inputCSS}
+            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-[#0b1120] border border-gray-700 rounded p-3 text-white focus:border-cyan-400 focus:outline-none transition-colors"
               placeholder="name@example.com"
+              required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 ml-1 uppercase tracking-wider">Password</label>
-            <input 
-              type="password" 
-              name="password" 
-              required 
-              value={formData.password} 
-              onChange={handleInputChange} 
-              className={inputCSS}
+            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-[#0b1120] border border-gray-700 rounded p-3 text-white focus:border-cyan-400 focus:outline-none transition-colors"
               placeholder="••••••••"
+              required
             />
           </div>
 
-          <button 
-            type="submit" 
-            disabled={isLoading}
-            className="w-full py-4 mt-2 rounded-xl text-lg font-bold bg-[#1a1f2e] dark:bg-black text-white shadow-[0_4px_10px_rgba(0,0,0,0.3)] hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:hover:translate-y-0"
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-black border border-gray-700 hover:border-cyan-400 text-white font-bold py-3 px-4 rounded transition-all mt-4"
           >
-            {isLoading ? 'Processing...' : (isRegistering ? 'Create Account' : 'Sign In')}
+            {loading ? 'Processing...' : (isRegistering ? 'Create Account' : 'Sign In')}
           </button>
         </form>
 
-        <div className="mt-8 text-center">
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-            {isRegistering ? 'Already have an account? ' : "Don't have an account? "}
-            <button 
-              onClick={() => {
-                setIsRegistering(!isRegistering);
-                setError(null);
-              }}
-              className="font-bold text-emerald-600 dark:text-emerald-400 hover:underline transition-all"
-            >
-              {isRegistering ? 'Sign In' : 'Register here'}
-            </button>
-          </p>
+        <div className="mt-6 text-center text-sm text-gray-400">
+          {isRegistering ? 'Already have an account? ' : "Don't have an account? "}
+          <button
+            type="button"
+            onClick={() => {
+              setIsRegistering(!isRegistering);
+              setError(''); // Clear any errors when switching modes
+            }}
+            className="text-cyan-400 hover:text-cyan-300 font-semibold"
+          >
+            {isRegistering ? 'Sign In' : 'Register here'}
+          </button>
         </div>
-
       </div>
     </div>
   );
-}
+};
+
+export default Login;
