@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext'; // NEW: Import your auth context!
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../contexts/AuthContext'; 
+import ResolveCase from '../components/ResolveCase'; // NEW: Import the evidence form
 
 export default function VolunteerDashboard() {
   const [activeTab, setActiveTab] = useState('pending');
@@ -8,27 +9,34 @@ export default function VolunteerDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null); 
   
-  const { user } = useAuth(); // NEW: Get the currently logged in user
+  // NEW: State to control the Resolution Modal
+  const [resolvingCaseId, setResolvingCaseId] = useState(null);
+  
+  const { user } = useAuth();
+
+  // Abstracted fetch function so we can refresh the list after submitting evidence
+  const fetchCases = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('anirescue_token');
+      // Using your explicit Render URL to match your PUT request
+      const response = await fetch('https://anirescue-api.onrender.com/api/cases', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCases(data);
+      }
+    } catch (error) {
+      console.error("Failed to load volunteer cases", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchCases = async () => {
-      try {
-        const token = localStorage.getItem('anirescue_token');
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/cases`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setCases(data);
-        }
-      } catch (error) {
-        console.error("Failed to load volunteer cases", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchCases();
-  }, []);
+  }, [fetchCases]);
 
   const handleUpdateStatus = async (caseId, newStatus) => {
     setProcessingId(caseId); 
@@ -45,7 +53,6 @@ export default function VolunteerDashboard() {
       });
 
       if (response.ok) {
-        // We include the assigned_volunteer_id instantly so UI re-renders correctly
         setCases(cases.map(c => c.id === caseId ? { ...c, status: newStatus, assigned_volunteer_id: user.id } : c));
         
         if (newStatus === 'Active') setActiveTab('active');
@@ -70,6 +77,28 @@ export default function VolunteerDashboard() {
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto mb-20 md:mb-0 transition-colors duration-300">
       
+      {/* --- NEW: Resolution Modal Overlay --- */}
+      {resolvingCaseId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-md animate-fade-in-up">
+            <button 
+              onClick={() => setResolvingCaseId(null)}
+              className="absolute -top-12 right-0 text-gray-300 hover:text-white font-bold text-lg"
+            >
+              ✕ Close
+            </button>
+            <ResolveCase 
+              caseId={resolvingCaseId} 
+              onResolutionSuccess={() => {
+                setResolvingCaseId(null);
+                fetchCases(); // Refresh database
+                setActiveTab('resolved'); // Move them to the success tab
+              }} 
+            />
+          </div>
+        </div>
+      )}
+
       <div className="text-center mb-10">
         <h2 className="text-3xl font-extrabold text-gray-800 dark:text-gray-100 mb-2 transition-colors">Volunteer Dispatch</h2>
         <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Manage your active rescue operations.</p>
@@ -144,15 +173,14 @@ export default function VolunteerDashboard() {
                       </button>
                     )}
 
-                    {/* NEW: Explicitly checking ownership before rendering the Resolved button */}
                     {activeTab === 'active' && (
                       caseItem.assigned_volunteer_id === user?.id ? (
                         <button 
-                          onClick={() => handleUpdateStatus(caseItem.id, 'Resolved')}
-                          disabled={processingId === caseItem.id}
-                          className="flex-1 py-3 rounded-xl text-sm font-bold bg-emerald-500 text-white shadow-[0_4px_10px_rgba(16,185,129,0.3)] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0"
+                          // NEW: Open the modal instead of bypassing the evidence protocol
+                          onClick={() => setResolvingCaseId(caseItem.id)}
+                          className="flex-1 py-3 rounded-xl text-sm font-bold bg-emerald-500 text-white shadow-[0_4px_10px_rgba(16,185,129,0.3)] hover:-translate-y-0.5 transition-all"
                         >
-                          {processingId === caseItem.id ? 'Processing...' : 'Mark as Resolved'}
+                          Verify Resolution
                         </button>
                       ) : (
                         <div className="flex-1 py-3 rounded-xl text-sm font-bold text-center bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] text-gray-400 dark:text-gray-500">
@@ -178,4 +206,4 @@ export default function VolunteerDashboard() {
       </div>
     </div>
   );
-}
+} 
