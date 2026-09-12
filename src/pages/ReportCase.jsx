@@ -1,46 +1,84 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
+// Fix for default Leaflet marker icons in React
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+// Helper component to handle map clicks and drop the pin
+function LocationPicker({ location, setLocation }) {
+  useMapEvents({
+    click(e) {
+      setLocation(prev => ({ ...prev, lat: e.latlng.lat, lng: e.latlng.lng }));
+    },
+  });
+  return location.lat ? <Marker position={[location.lat, location.lng]} /> : null;
+}
 
 export default function ReportCase() {
-  // State Management
   const [location, setLocation] = useState({ lat: null, lng: null, isManual: false });
   const [manualAddress, setManualAddress] = useState('');
   const [issueDescription, setIssueDescription] = useState('');
   
-  // File states (No more Base64!)
   const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLocating, setIsLocating] = useState(false); 
   const [error, setError] = useState('');
   
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
   const handleLocationLock = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            isManual: false
-          });
-          setError('');
-        },
-        () => {
-          setError('Unable to retrieve your location automatically.');
-        }
-      );
+    setError('');
+    setIsLocating(true);
+    setLocation(prev => ({ ...prev, isManual: false }));
+
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser.');
+      setIsLocating(false);
+      return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          isManual: false
+        });
+        setIsLocating(false);
+        setError('');
+      },
+      (err) => {
+        console.error("Location error:", err);
+        setError('Failed to auto-detect location. Please use PIN & DESCRIBE.');
+        setIsLocating(false);
+        setLocation(prev => ({ ...prev, isManual: true }));
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   };
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       setSelectedImageFile(file);
-      // Create a fast, local preview URL without converting to Base64
       setImagePreview(URL.createObjectURL(file)); 
+      
+      // Trigger GPS lock automatically upon photo selection
+      handleLocationLock();
     }
   };
 
@@ -54,10 +92,8 @@ export default function ReportCase() {
     setError('');
 
     try {
-      // 1. Create the Multipart Form payload
       const formData = new FormData();
       
-      // 2. Append text fields
       formData.append('location', JSON.stringify({
         lat: location.lat,
         lng: location.lng,
@@ -65,16 +101,12 @@ export default function ReportCase() {
         isManual: location.isManual
       }));
       formData.append('description', issueDescription);
-      
-      // 3. Append the raw binary file directly
       formData.append('image', selectedImageFile); 
 
-      // 4. Transmit payload
       const response = await fetch('https://anirescue-api.onrender.com/api/cases/report', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('anirescue_token')}`
-          // Let the browser set the 'Content-Type' automatically for FormData!
         },
         body: formData
       });
@@ -95,7 +127,6 @@ export default function ReportCase() {
     }
   };
 
-  // Shared CSS for inputs
   const inputCSS = "w-full px-4 py-3 rounded-xl bg-[#e2e8f0] dark:bg-[#0f172a] text-gray-800 dark:text-gray-100 outline-none transition-all duration-300 shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] focus:ring-2 focus:ring-rose-500/50";
 
   return (
@@ -114,7 +145,6 @@ export default function ReportCase() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           
-          {/* Image Upload Area */}
           <div>
             <div 
               onClick={() => fileInputRef.current.click()}
@@ -128,56 +158,70 @@ export default function ReportCase() {
                   Tap to capture or upload
                 </div>
               )}
-              <input 
-                type="file" 
-                accept="image/*" 
-                className="hidden" 
-                ref={fileInputRef} 
-                onChange={handleImageChange} 
-              />
+              <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageChange} />
             </div>
           </div>
 
-          {/* Location Controls */}
           <div>
             <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 ml-1 uppercase tracking-wider">
-              Location Lock
+              Location Mode
             </label>
             <div className="flex gap-4">
               <button 
                 type="button" 
                 onClick={handleLocationLock} 
-                className="flex-1 py-3 rounded-xl text-sm font-bold bg-[#1a1f2e] dark:bg-black text-white shadow-[0_4px_10px_rgba(0,0,0,0.3)] hover:-translate-y-0.5 active:scale-95 transition-all duration-200"
+                className={`flex-1 py-3 rounded-xl text-sm font-bold shadow-[0_4px_10px_rgba(0,0,0,0.3)] hover:-translate-y-0.5 active:scale-95 transition-all duration-200 ${!location.isManual ? 'bg-[#1a1f2e] dark:bg-black text-white' : 'bg-[#e2e8f0] dark:bg-[#0f172a] text-gray-500'}`}
               >
-                AUTO GPS
+                LIVE GPS
               </button>
               <button 
                 type="button" 
-                onClick={() => setLocation({ ...location, isManual: true })} 
-                className="flex-1 py-3 rounded-xl text-sm font-bold bg-[#e2e8f0] dark:bg-[#0f172a] text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 shadow-[6px_6px_12px_#cbd5e1,_-6px_-6px_12px_#f8fafc] dark:shadow-[6px_6px_12px_#070a13,_-6px_-6px_12px_#172441] hover:-translate-y-0.5 active:scale-95 active:shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:active:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] transition-all duration-200"
+                onClick={() => setLocation(prev => ({ ...prev, isManual: true }))} 
+                className={`flex-1 py-3 rounded-xl text-sm font-bold hover:-translate-y-0.5 active:scale-95 transition-all duration-200 ${location.isManual ? 'bg-[#1a1f2e] dark:bg-black text-white shadow-[0_4px_10px_rgba(0,0,0,0.3)]' : 'bg-[#e2e8f0] dark:bg-[#0f172a] text-gray-500 shadow-[6px_6px_12px_#cbd5e1,_-6px_-6px_12px_#f8fafc] dark:shadow-[6px_6px_12px_#070a13,_-6px_-6px_12px_#172441]'}`}
               >
                 PIN & DESCRIBE
               </button>
             </div>
 
-            {location.isManual && (
-              <input 
-                type="text" 
-                placeholder="E.g., Near City Mall, Main Gate" 
-                value={manualAddress} 
-                onChange={(e) => setManualAddress(e.target.value)} 
-                className={`mt-4 ${inputCSS}`}
-              />
-            )}
-
-            {!location.isManual && location.lat && (
-              <div className="mt-4 px-4 py-3 rounded-xl bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] text-sm font-bold text-emerald-600 dark:text-emerald-400 text-center">
-                {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
+            {location.isManual ? (
+              <div className="mt-4 space-y-4">
+                {/* INTERACTIVE MAP BLOCK */}
+                <div className="h-48 w-full rounded-xl overflow-hidden shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] z-0">
+                  <MapContainer 
+                    center={location.lat ? [location.lat, location.lng] : [19.0760, 72.8777]} 
+                    zoom={12} 
+                    style={{ height: '100%', width: '100%', zIndex: 1 }}
+                  >
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <LocationPicker location={location} setLocation={setLocation} />
+                  </MapContainer>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 text-center font-bold uppercase tracking-wider">
+                  Tap map to drop pin
+                </p>
+                <input 
+                  type="text" 
+                  placeholder="E.g., Near City Mall, Main Gate" 
+                  value={manualAddress} 
+                  onChange={(e) => setManualAddress(e.target.value)} 
+                  className={inputCSS}
+                />
+              </div>
+            ) : (
+              <div className="mt-4 px-4 py-3 rounded-xl bg-[#e2e8f0] dark:bg-[#0f172a] shadow-[inset_4px_4px_8px_#cbd5e1,inset_-4px_-4px_8px_#f8fafc] dark:shadow-[inset_4px_4px_8px_#070a13,inset_-4px_-4px_8px_#172441] text-sm font-bold text-center">
+                {isLocating ? (
+                  <span className="text-amber-500 animate-pulse">Acquiring GPS Signal...</span>
+                ) : location.lat ? (
+                  <span className="text-emerald-600 dark:text-emerald-400">
+                    Locked: {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
+                  </span>
+                ) : (
+                  <span className="text-gray-500">Upload photo to auto-detect location...</span>
+                )}
               </div>
             )}
           </div>
 
-          {/* Description */}
           <div>
             <textarea 
               placeholder="Describe the animal, injury, and severity..." 
@@ -187,22 +231,10 @@ export default function ReportCase() {
             ></textarea>
           </div>
 
-          {/* Submit Button */}
-          <button 
-            type="submit" 
-            disabled={isSubmitting}
-            className="w-full relative group block select-none focus:outline-none"
-          >
-            {/* Red LED Glow Base */}
-            <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-3/4 h-5 bg-rose-500 blur-lg rounded-full opacity-60 transition-all duration-300 ${isSubmitting ? 'opacity-0' : 'group-hover:bg-rose-400 group-hover:h-6 group-hover:opacity-100 group-active:h-2 group-active:blur-md group-active:bg-rose-700 group-active:opacity-50'}`}></div>
-            
-            {/* Physical Button Level */}
-            <div className={`relative z-10 w-full bg-[#1a1f2e] dark:bg-black text-white px-6 py-4 rounded-xl font-bold text-lg transition-all duration-200 border-t border-white/20 shadow-[0_8px_20px_rgba(0,0,0,0.4)] flex justify-center items-center gap-2 ${
-              isSubmitting 
-                ? 'opacity-50 cursor-not-allowed shadow-[inset_0_5px_15px_rgba(0,0,0,0.9)] scale-[0.97]' 
-                : 'group-hover:-translate-y-1 group-hover:shadow-[0_15px_30px_rgba(0,0,0,0.6)] group-active:translate-y-1 group-active:scale-[0.97] group-active:shadow-[inset_0_5px_15px_rgba(0,0,0,0.9)]'
-            }`}>
-              {isSubmitting ? 'Processing...' : 'Transmit Rescue Alert'}
+          <button type="submit" disabled={isSubmitting || isLocating} className="w-full relative group block select-none focus:outline-none">
+            <div className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-3/4 h-5 bg-rose-500 blur-lg rounded-full opacity-60 transition-all duration-300 ${isSubmitting || isLocating ? 'opacity-0' : 'group-hover:bg-rose-400 group-hover:h-6 group-hover:opacity-100 group-active:h-2 group-active:blur-md group-active:bg-rose-700 group-active:opacity-50'}`}></div>
+            <div className={`relative z-10 w-full bg-[#1a1f2e] dark:bg-black text-white px-6 py-4 rounded-xl font-bold text-lg transition-all duration-200 border-t border-white/20 shadow-[0_8px_20px_rgba(0,0,0,0.4)] flex justify-center items-center gap-2 ${isSubmitting || isLocating ? 'opacity-50 cursor-not-allowed shadow-[inset_0_5px_15px_rgba(0,0,0,0.9)] scale-[0.97]' : 'group-hover:-translate-y-1 group-hover:shadow-[0_15px_30px_rgba(0,0,0,0.6)] group-active:translate-y-1 group-active:scale-[0.97] group-active:shadow-[inset_0_5px_15px_rgba(0,0,0,0.9)]'}`}>
+              {isSubmitting ? 'Processing...' : isLocating ? 'Locating...' : 'Transmit Rescue Alert'}
             </div>
           </button>
           

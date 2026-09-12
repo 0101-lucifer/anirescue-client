@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext'; 
 
 const Login = () => {
+  // Use the custom hook exported from your context
+  const { login } = useAuth(); 
+  
   // Toggles between Login (false) and Register (true) modes
   const [isRegistering, setIsRegistering] = useState(false);
   
@@ -19,10 +23,10 @@ const Login = () => {
     setError('');
     setLoading(true);
 
-    // 1. Smart Routing: Pick the exact endpoint based on the form mode
+    // Smart Routing: Pick the exact endpoint based on the form mode
     const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
     
-    // 2. Smart Payload: Only send the 'name' field if they are creating an account
+    // Smart Payload: Only send the 'name' field if they are creating an account
     const payload = isRegistering 
       ? { name, email, password } 
       : { email, password };
@@ -42,13 +46,16 @@ const Login = () => {
         throw new Error(data.error || 'Server error. Please try again.');
       }
 
-      // Success! Save the JWT token and redirect to the dashboard
-      localStorage.setItem('token', data.token);
+      // CRITICAL FIX: Save the token using the exact name your AuthContext expects
+      localStorage.setItem('anirescue_token', data.token);
       
-      // If you are storing user data in context, you'd set it here too
-      // login(data.user); 
+      // Update global state so the app knows who is logged in
+      if (login) {
+         login(data.user); 
+      }
       
-      navigate('/'); 
+      // Navigate to your protected map/dashboard route
+      navigate('/map'); 
       
     } catch (err) {
       setError(err.message);
@@ -79,7 +86,6 @@ const Login = () => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Only show the Name field if registering */}
           {isRegistering && (
             <div>
               <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
